@@ -38,29 +38,56 @@ parameters={
 # Q_in=p['f_R']*p['V_T']
 'Q_in': 7250,  #flow rate - vstupni objem (ml/min)
 
+#5000->3500
+'Q_index': [5000,2700,510,1100,220]#blood flow in compartment (ml/min) - hodnoty z http://anesthesiology.pubs.asahq.org/article.aspx?articleid=2035555
 }
 
 #def Pharmacokinetic(t,state,p):
 def Pharmacokinetic(t,state,p):
-  C_insp=state
-  
+  C_insp,C1_I,C2_I,C3_I,C4_I,C5_I=state
+  C_insp_old=C_insp
+  C_index_I=list([C1_I,C2_I,C3_I,C4_I,C5_I])
+
+  #ISOFLURANE
+  #respiratory system
   p['C_out']=p['C_in']-C_insp #TODO
   #koncentrace v plicich = (prisun isoflurance - naredeni - vyfouknuti) / objem plic
-  C_insp=(p['Q_in']*p['C_in'] - (p['Q_in'] - p['deltaQ'])*C_insp - p['f_R']*(p['V_T'] - p['delta'])*(C_insp - p['C_out']))/p['V']
-  #print(C_insp)
-  return C_insp
+  C_insp=(p['Q_in']*p['C_in'] - (p['Q_in'] - p['deltaQ'])*C_insp_old - p['f_R']*(p['V_T'] - p['delta'])*(C_insp_old - p['C_out']))/p['V']
+  
+  #lungs - central compartment
+  pom=0
+  for i in range(1,5):
+    pom+=p['Q_index'][i]*(C_index_I[i]/p['R_index'][i]-C_index_I[0])
+  #C1_I = (pom + p['f_R']*(p['V_T']-p['delta'])*(C_insp_old-C_index_I[0])) / p['V_index'][0]
+  C1_I = (pom + p['f_R']*(p['V_T']-p['delta'])*(C_insp_old-C_index_I[0])) / p['V_index'][0]
+
+  #liver - 2nd compartment
+  C2_I = (p['Q_index'][1]*(C_index_I[0]-C_index_I[1]/p['R_index'][1]) -
+          p['k_20']*C_index_I[1]*p['V_index'][1])/p['V_index'][1]
+  
+  #muscles, other organs and tissues, fat tissues - 3rd-5th compartment
+  pom=[0,0,0,0,0]
+  for i in range(2,5):
+    pom[i]=(p['Q_index'][i]*(C_index_I[0]-C_index_I[i]/p['R_index'][i]))/p['V_index'][i]
+  C3_I=pom[2]
+  C4_I=pom[3]
+  C5_I=pom[4]
+
+  result=[C_insp,C1_I,C2_I,C3_I,C4_I,C5_I]
+  return result
 
 
 #t = np.linspace(0, 10, 101)
 
-state0 = [0]
+state0 = [0,0,0,0,0,0]
 
-sol = solve_ivp(lambda t,y: Pharmacokinetic(t,y,parameters), [0,10], state0) #, t_eval=np.linspace(0, 1.5, 15)) #method='LSODA', 
+sol = solve_ivp(lambda t,y: Pharmacokinetic(t,y,parameters), [0,60], state0) #, t_eval=np.linspace(0, 1.5, 15)) #method='LSODA', 
 
 vykreslit=[]
 for i in range(sol.t.size):
   prom=[]
   for j in range(int(sol.y.size/sol.t.size)):
+  #for j in [0,1]:
     prom.append(sol.y.item(j,i))
   vykreslit.append(prom)
 
@@ -68,5 +95,5 @@ plt.plot(sol.t, vykreslit)
 xlabel('TIME (min)')
 ylabel('Concentration (g/mL)')
 title('Concentration of isoflurane inspired by the patient')
-legend(('$C_{insp}$ (g/mL)','$dalsi promenne$ (g/mL)'))
+legend(('$C_{insp}$ (g/mL)','$C_1$ (g/mL)','$C_2$ (g/mL)','$C_3$ (g/mL)','$C_4$ (g/mL)','$C_5$ (g/mL)'))
 plt.show()
