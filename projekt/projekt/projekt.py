@@ -44,7 +44,7 @@ p = {
     # Q_in=p['f_R']*p['V_T']
     'Q_in': 7250,  # flow rate - vstupni objem (ml/min)
     # 5000->3500
-    'Q_index': [3500, 2700, 510, 1100, 220]  # blood flow in compartment (ml/min) - hodnoty z http://anesthesiology.pubs.asahq.org/article.aspx?articleid=2035555
+    'Q_index': [3490, 2700, 714, 550, 132]  # blood flow in compartment (ml/min) - hodnoty z http://anesthesiology.pubs.asahq.org/article.aspx?articleid=2035555
 }
 
 
@@ -64,16 +64,21 @@ class Simulation:
         :param t_span: 2-tuple, interval of integration (t0, tf). The solver starts with t=t0 and integrates until it reaches t=tf.
         :return: Bunch object with the following fields defined: t, y, etc. -- see scipy/integrate/_ivp/ivp.py fo details
         """
-        state0 = [0] * 19  # TODO
-        return solve_ivp(self.do_step, t_span, state0, method='LSODA')  # , t_eval=np.linspace(0, 1.5, 15)) #method='LSODA',
+        state0 = [0] * 20  # TODO
+        return solve_ivp(self.do_step, t_span, state0, method='LSODA')  # , t_eval=np.linspace(0, 1.5, 15)) #method='LSODA', max_step =0.25
 
     def dosage(self, t):
         """nastaveni davkovani pro isofluran (C_in), dopamin (C_inf_DP) a nitroprusid sodny (C_inf_SNP) v danem case"""
         if (t > 5) and (t < 20):
-            C_inf_DP = 1
+            C_inf_DP = 0
         else:
             C_inf_DP = 0
-        C_in = 0.01
+
+        if (t < 1000):
+            C_in = 0.01/(0.215*p['V_T']) #procent/(procento kysliku * dechovy objem)
+        else:
+            C_in = 0
+
         C_inf_SNP = 0
         return C_in, C_inf_DP, C_inf_SNP
 
@@ -87,6 +92,11 @@ class Simulation:
 
         C_in, C_inf_DP, C_inf_SNP = self.dosage(t)
         C_out = C_in - C_insp  # TODO
+        C_out = (C_in * p['delta'] + C_insp_old * (p['V_T'] - p['delta'])) / p['V_T']
+
+        # isoflurane on BIS
+        C_e_old=state[19]
+        C_e=p['k_e0']*( C_index_I[0]-C_e_old)
 
         # ISOFLURANE
         # respiratory system
@@ -98,7 +108,7 @@ class Simulation:
         for i in range(1, 5):
             pom += p['Q_index'][i] * (C_index_I[i] / p['R_index'][i] - C_index_I[0])
         # C1_I = (pom + p['f_R']*(p['V_T']-p['delta'])*(C_insp_old-C_index_I[0])) / p['V_index'][0]
-        C1_I = (pom + p['f_R'] * (p['V_T'] - p['delta']) * (C_insp - C_index_I[0])) / p['V_index'][0]
+        C1_I = (pom + p['f_R'] * (p['V_T'] - p['delta']) * (C_insp_old - C_index_I[0])) / p['V_index'][0]
 
         # liver - 2nd compartment
         C2_I = (p['Q_index'][1] * (C_index_I[0] - C_index_I[1] / p['R_index'][1]) -
@@ -159,13 +169,34 @@ class Simulation:
 
         # TODO BIS co znamena a k cemu je to Ce, kdyz uz se koncentrace pocitaji v pharmacokineticu?
 
-        result += [new_Eff_DP_Emax, new_Eff_DP_Rsys, new_Eff_SNP_Rsys]
+        result += [new_Eff_DP_Emax, new_Eff_DP_Rsys, new_Eff_SNP_Rsys]+[C_e]
         return result
 
 
 simulation = Simulation()
-time_span = [0, 50]  # starting and final times
+time_span = [0, 1500]  # starting and final times
 sol = simulation.run(time_span)
+
+######################################################
+### VYKRESLOVANI GRAFU
+######################################################
+
+# efekt isofluranu na BIS
+vykreslit_BIS = []
+for i in range(sol.t.size):
+    C_e=sol.y.item(19, i)
+    BIS=100 - 100* ((C_e**p['gama'])/((C_e**p['gama']) + (p['EC_50']**p['gama'])))
+    vykreslit_BIS.append(BIS)
+
+plt.figure(5)
+plt.subplot(111)
+plt.plot(sol.t, vykreslit_BIS)
+plt.xlabel('Time (min)')
+plt.ylabel('BIS (mmHg)')
+plt.xlim(0,1600)
+plt.ylim(30,100)
+plt.title('Bispectral index (BIS)')
+
 
 vykreslit_I = []
 vykreslit_DP = []
@@ -202,7 +233,8 @@ plt.subplot(111)
 plt.plot(sol.t, vykreslit_MAP)
 plt.xlabel('Time (min)')
 plt.ylabel('MAP (mmHg)')
-plt.title('Mean arterial pressure (MAP)')
+plt.xlim(0,50)
+plt.title('Effect of Isoflurane on MAP')
 
 plt.figure(2)
 
@@ -253,21 +285,21 @@ plt.ylabel('MAP (mmHg)')
 plt.title('MAP as function of Emax and Rsys')
 plt.show()
 
-# Effect of Isoflurane on MAP
-#  TODO aha, to je to stejne jako prvni MAP vykreslovani... bude asi potreba zjistit, co je teda tento MAP a co ten MAP v kvadraticke rovnici
-draw_isoflurane_effect_on_MAP = []
-for i in range(sol.t.size):
-    suma = 0
-    for j in range(1, 5):  # for compartments 2-5
-        suma += p['g_index'][j] * (1 + p['b_index'][j] * sol.y.item(j+1, i))  # j+1 protoze C2_I je ve vysledku az na 3. pozici
-    MAP = p['Q_index'][1] / suma
+## Effect of Isoflurane on MAP
+##  TODO aha, to je to stejne jako prvni MAP vykreslovani... bude asi potreba zjistit, co je teda tento MAP a co ten MAP v kvadraticke rovnici
+#draw_isoflurane_effect_on_MAP = []
+#for i in range(sol.t.size):
+#    suma = 0
+#    for j in range(1, 5):  # for compartments 2-5
+#        suma += p['g_index'][j] * (1 + p['b_index'][j] * sol.y.item(j+1, i))  # j+1 protoze C2_I je ve vysledku az na 3. pozici
+#    MAP = p['Q_index'][0] / suma
 
-    draw_isoflurane_effect_on_MAP.append(MAP)
+#    draw_isoflurane_effect_on_MAP.append(MAP)
 
-plt.figure(4)
-plt.subplot(111)
-plt.plot(sol.t, draw_isoflurane_effect_on_MAP)
-plt.xlabel('Time (min)')
-plt.ylabel('MAP (mmHg)')
-plt.title('Effect of Isoflurane on MAP')
-plt.show()
+#plt.figure(4)
+#plt.subplot(111)
+#plt.plot(sol.t, draw_isoflurane_effect_on_MAP)
+#plt.xlabel('Time (min)')
+#plt.ylabel('MAP (mmHg)')
+#plt.title('Effect of Isoflurane on MAP')
+#plt.show()
