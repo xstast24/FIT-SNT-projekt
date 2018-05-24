@@ -180,8 +180,7 @@ sol = simulation.run(time_span)
 ######################################################
 ### VYKRESLOVANI GRAFU
 ######################################################
-
-# efekt isofluranu na BIS
+"""efekt isofluranu na BIS"""
 vykreslit_BIS = []
 for i in range(sol.t.size):
     C_e=sol.y.item(19, i)
@@ -197,7 +196,7 @@ plt.xlim(0,1600)
 plt.ylim(30,100)
 plt.title('Bispectral index (BIS)')
 
-
+"""koncentrace Isofluranu, DP a SNP"""
 vykreslit_I = []
 vykreslit_DP = []
 vykreslit_SNP = []
@@ -217,24 +216,6 @@ for i in range(sol.t.size):
     for j in range(11, 16):
         prom.append(sol.y.item(j, i))
     vykreslit_SNP.append(prom)
-
-# efekt isofluranu na MAP
-vykreslit_MAP = []
-for i in range(sol.t.size):
-    pom = 0
-    for j in range(1, 5):
-        pom += p['g_index'][j] * (1 + p['b_index'][j] * vykreslit_I[i][j + 1])
-    vykreslit_MAP.append(p['Q_index'][0] / pom)
-
-plt.figure(1)
-
-# MAP z pharmacokinetic modelu
-plt.subplot(111)
-plt.plot(sol.t, vykreslit_MAP)
-plt.xlabel('Time (min)')
-plt.ylabel('MAP (mmHg)')
-plt.xlim(0,50)
-plt.title('Effect of Isoflurane on MAP')
 
 plt.figure(2)
 
@@ -259,8 +240,24 @@ plt.ylabel('Concentration (g/mL)')
 plt.title('Concentration of sodium nitroprusside')
 plt.legend(('$C_1$ (g/mL)', '$C_2$ (g/mL)', '$C_3$ (g/mL)', '$C_4$ (g/mL)', '$C_5$ (g/mL)'))
 
-"""PHARMACODYNAMIC plotting"""
-# MAP as function of Emax and Rsys
+"""efekt isofluranu na MAP"""
+vykreslit_MAP = []
+for i in range(sol.t.size):
+    pom = 0
+    for j in range(1, 5):
+        pom += p['g_index'][j] * (1 + p['b_index'][j] * vykreslit_I[i][j + 1])
+    vykreslit_MAP.append(p['Q_index'][0] / pom)
+
+plt.figure(1)
+
+plt.subplot(111)
+plt.plot(sol.t, vykreslit_MAP)
+plt.xlabel('Time (min)')
+plt.ylabel('MAP (mmHg)')
+plt.xlim(0,50)
+plt.title('Effect of Isoflurane on MAP')
+
+"""MAP as function of Emax and Rsys"""
 draw_MAP_as_function_Emax_Rsys = []
 for i in range(sol.t.size):
     E_max = p['E_max0'] * (1 + sol.y.item(Pos.EFF_DP_EMAX, i))
@@ -283,23 +280,21 @@ plt.plot(sol.t, draw_MAP_as_function_Emax_Rsys)
 plt.xlabel('Time (min)')
 plt.ylabel('MAP (mmHg)')
 plt.title('MAP as function of Emax and Rsys')
+
+"""Baroreflex"""
+draw_baroreflex = []
+for i in range(sol.t.size):
+    # TODO je to MAP z kvadraticke, nebo isofluoranu?
+    MAP = draw_MAP_as_function_Emax_Rsys[i]
+    bfc = math.exp(p['c']*(MAP - p['MAP0'])) / (1 + math.exp(p['c']*(MAP - p['MAP0'])))
+    print(bfc)
+    draw_baroreflex.append(bfc)
+
+plt.figure(4)
+plt.subplot(111)
+plt.plot(sol.t, draw_baroreflex)
+plt.xlabel('Time (min)')
+plt.ylabel('TODO bfc')
+plt.title('Baroreflex')
+
 plt.show()
-
-## Effect of Isoflurane on MAP
-##  TODO aha, to je to stejne jako prvni MAP vykreslovani... bude asi potreba zjistit, co je teda tento MAP a co ten MAP v kvadraticke rovnici
-#draw_isoflurane_effect_on_MAP = []
-#for i in range(sol.t.size):
-#    suma = 0
-#    for j in range(1, 5):  # for compartments 2-5
-#        suma += p['g_index'][j] * (1 + p['b_index'][j] * sol.y.item(j+1, i))  # j+1 protoze C2_I je ve vysledku az na 3. pozici
-#    MAP = p['Q_index'][0] / suma
-
-#    draw_isoflurane_effect_on_MAP.append(MAP)
-
-#plt.figure(4)
-#plt.subplot(111)
-#plt.plot(sol.t, draw_isoflurane_effect_on_MAP)
-#plt.xlabel('Time (min)')
-#plt.ylabel('MAP (mmHg)')
-#plt.title('Effect of Isoflurane on MAP')
-#plt.show()
