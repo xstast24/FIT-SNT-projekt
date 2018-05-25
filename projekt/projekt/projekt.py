@@ -275,46 +275,29 @@ else:
 
 # spusteni simulace modelu
 simulation = Simulation()
-time_span = [0, 10]  # starting and final times
+time_span = [0, 1500]  # starting and final times
 sol = simulation.run(time_span, DOSAGE_METHOD)
 
-new_state = []
-for i in range(21):
-    new_state.append(sol.y.item(i,sol.t.size-1))
 
-new_state[20] -= 20  # skokova zmena tlaku
-#p['Q_index'][0]=2715 #skokova zmena tlaku
-
-time_span = [10, 20]  # starting and final times
-sol2 = simulation.run(time_span, DOSAGE_METHOD, state=new_state)
 
 
 ######################################################
 # VYKRESLOVANI GRAFU
 ######################################################
 # MAP krivka
-vykreslit_MAP = []
+vykreslit_MAP_new = []
 for i in range(sol.t.size):
-    vykreslit_MAP.append(sol.y.item(20, i))
-for i in range(sol2.t.size):
-    vykreslit_MAP.append(sol2.y.item(20, i))
+    vykreslit_MAP_new.append(sol.y.item(20, i))
 
-plt.figure(1)
+plt.figure(10)
 plt.subplot(111)
-plt.plot(list(sol.t)+list(sol2.t), vykreslit_MAP)
+plt.plot(sol.t, vykreslit_MAP_new)
 plt.xlabel('Time (min)')
 plt.ylabel('MAP (mmHg)')
-#plt.xlim(0,1600)
-#plt.ylim(30,100)
-plt.title('Mean arterial pressure (MAP)')
+#plt.xlim(0,50)
+#plt.ylim(80,90)
+plt.title('Mean arterial pressure (MAP) podle diferencialni rovnice')
 
-##########################################
-# zobrazi MAP grafu pro upravenou diferencialni rovnici
-#
-# V PRIPADE POTREBY ZAKOMENTOVAT/SMAZAT NÁSLEDUJÍCÍ ŘÁDKY
-plt.show()
-exit()
-#########################################
 
 # efekt isofluranu na BIS
 vykreslit_BIS = []
@@ -328,8 +311,8 @@ plt.subplot(111)
 plt.plot(sol.t, vykreslit_BIS)
 plt.xlabel('Time (min)')
 plt.ylabel('BIS (mmHg)')
-plt.xlim(0,1600)
-plt.ylim(30,100)
+#plt.xlim(0,1600)
+#plt.ylim(30,100)
 plt.title('Bispectral index (BIS)')
 
 # davkovani leku
@@ -367,8 +350,12 @@ plt.subplot(111)
 plt.plot(sol.t, vykreslit_MAP)
 plt.xlabel('Time (min)')
 plt.ylabel('MAP (mmHg)')
-plt.xlim(0,50)
+#plt.xlim(0,50)
+#plt.ylim(80,90)
 plt.title('Effect of Isoflurane on MAP')
+
+plt.show()
+exit() 
 
 # hodnoty davkovani leku
 plt.figure(2)
