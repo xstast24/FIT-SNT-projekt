@@ -1,8 +1,7 @@
 from pylab import *
 from scipy.integrate import solve_ivp
 from enum import Enum
-from math import sqrt
-
+from math import sqrt,exp
 
 p = {
     'A_aorta': 4.15,
@@ -59,13 +58,15 @@ class Pos:
 
 
 class Simulation:
-    def run(self, t_span):
+    def run(self, t_span, state=([0] * 20)+[p['MAP0']]):
         """
         :param t_span: 2-tuple, interval of integration (t0, tf). The solver starts with t=t0 and integrates until it reaches t=tf.
         :return: Bunch object with the following fields defined: t, y, etc. -- see scipy/integrate/_ivp/ivp.py fo details
         """
-        state0 = [0] * 20  # TODO
-        return solve_ivp(self.do_step, t_span, state0, method='LSODA')  # , t_eval=np.linspace(0, 1.5, 15)) #method='LSODA', max_step =0.25
+        #state0 = [0] * 20  # TODO
+        #state0.append(p['MAP0']) # puvodni tlak
+        state0=state
+        return solve_ivp(self.do_step, t_span, state0, max_step =0.25)  # , t_eval=np.linspace(0, 1.5, 15)) #method='LSODA', max_step =0.25
 
     def dosage(self, t):
         """nastaveni davkovani pro isofluran (C_in), dopamin (C_inf_DP) a nitroprusid sodny (C_inf_SNP) v danem case"""
@@ -76,6 +77,7 @@ class Simulation:
 
         if (t < 1000):
             C_in = 0.01/(0.215*p['V_T']) #procent/(procento kysliku * dechovy objem)
+            C_in = 0
         else:
             C_in = 0
 
@@ -169,17 +171,77 @@ class Simulation:
 
         # TODO BIS co znamena a k cemu je to Ce, kdyz uz se koncentrace pocitaji v pharmacokineticu?
 
-        result += [new_Eff_DP_Emax, new_Eff_DP_Rsys, new_Eff_SNP_Rsys]+[C_e]
+        MAP=state[20]
+        # vypocet MAP z isofluranu
+        pom=0
+        for j in range(1, 5):
+            pom += p['g_index'][j] * (1 + p['b_index'][j] * C_index_I[j])
+        MAP_I=p['Q_index'][0] / pom
+
+        # vypocet baroreflexu
+        bfc = math.exp(p['c']*(MAP - p['MAP0'])) / (1 + math.exp(p['c']*(MAP - p['MAP0']))) #posledni funkcni
+
+        # vypocet MAP z kvadraticke rovnice
+        E_max = p['E_max0'] * (1 + Eff_DP_Emax)
+        R_sys = p['R_sys0'] * (1 - Eff_DP_Rsys - Eff_SNP_Rsys)
+        d = (2 * p['K'] ** 2) ** 2 - 4 * (1 / R_sys**2) * (-2 * p['K']**2 * p['V_lv'] * E_max)  # diskriminant = b^2 - 4ac pro MAP rovnici
+        if d < 0:
+            MAP_quadratic = 0
+            print("Chyba - rovnice nema reseni")
+        elif d == 0:
+            MAP_quadratic2=MAP_quadratic = (-(2 * p['K']**2) + math.sqrt(d)) / (2 * (1 / R_sys**2))
+        else:
+            MAP_quadratic = (-(2 * p['K']**2) + math.sqrt(d)) / (2 * (1 / R_sys**2))  # koren = -b +- odmocnina z D to cele deleno 2a
+
+        MAP_new = MAP - MAP * bfc*MAP_quadratic #posledni funkcni
+
+        result += [new_Eff_DP_Emax, new_Eff_DP_Rsys, new_Eff_SNP_Rsys]+[C_e]+[MAP_new]
         return result
 
 
 simulation = Simulation()
-time_span = [0, 1500]  # starting and final times
+time_span = [0, 10]  # starting and final times
 sol = simulation.run(time_span)
+
+new_state=[]
+for i in range(21):
+  new_state.append(sol.y.item(i,sol.t.size-1))
+
+new_state[20]-=20 #skokova zmena tlaku
+#p['Q_index'][0]=2715 #skokova zmena tlaku
+
+time_span = [10, 20]  # starting and final times
+sol2 = simulation.run(time_span,state=new_state)
+
 
 ######################################################
 ### VYKRESLOVANI GRAFU
 ######################################################
+
+# MAP krivka
+vykreslit_MAP = []
+for i in range(sol.t.size):
+    vykreslit_MAP.append(sol.y.item(20, i))
+for i in range(sol2.t.size):
+    vykreslit_MAP.append(sol2.y.item(20, i))
+
+plt.figure(1)
+plt.subplot(111)
+plt.plot(list(sol.t)+list(sol2.t), vykreslit_MAP)
+plt.xlabel('Time (min)')
+plt.ylabel('MAP (mmHg)')
+#plt.xlim(0,1600)
+#plt.ylim(30,100)
+plt.title('Mean arterial pressure (MAP)')
+
+
+##########################################
+# zobrazi MAP grafu pro vymyslenou diferencialni rovnici
+#
+# V PRIPADE POTREBY ZAKOMENTOVAT/SMAZAT NÁSLEDUJÍCÍ ŘÁDKY
+plt.show()
+exit()
+#########################################
 
 # efekt isofluranu na BIS
 vykreslit_BIS = []
