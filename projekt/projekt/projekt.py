@@ -10,6 +10,13 @@ from pylab import *
 from scipy.integrate import solve_ivp
 
 
+# funkce pro vytisknuti napovedy k pouziti programu
+def print_help():
+    print("Projekt predmetu SNT - Model regulace krevniho tlaku pri operacich.\n"
+          "Spustte s parametrem 'sim1' pro spusteni simulace # TODO popis\n"
+          "Spustte s parametrem 'sim2' pro spusteni simulace # TODO popis")
+
+
 # souhrn konstant a parametru potrebnych k behu modelu, jmena jsou shodna se jmennou konvenci pouzitou ve ydrojovem clanku
 p = {
     'A_aorta': 4.15,
@@ -67,28 +74,38 @@ class Simulation:
     Trida zapouzdruje zapouzdruje model a umoznuje nad nim provadeni simulaci pomoci metody run().
     Pro zmenu davkovani je treba upravit funkci dosage().
     """
-    def run(self, t_span, state=([0] * 20)+[p['MAP0']]):
+    dosage_method = None  # davkovaci metoda pouzita pri pocitani hodnot modelu pro davkovani leku v zavislosti na case
+
+    def run(self, t_span, dosage, state=([0] * 20)+[p['MAP0']]):
         """
         :param t_span: 2-tuple, interval of integration (t0, tf). The solver starts with t=t0 and integrates until it reaches t=tf.
+        :param dosage: dosage method for giving drugs - should return values: isoflurin, DP, SNP
         :return: Bunch object with the following fields defined: t, y, etc. -- see scipy/integrate/_ivp/ivp.py fo details
         """
+        Simulation.dosage_method = dosage
         state0 = state
         return solve_ivp(self.do_step, t_span, state0, max_step =0.25)  # , t_eval=np.linspace(0, 1.5, 15)) #method='LSODA', max_step =0.25
 
-    def dosage(self, t):
+    @staticmethod
+    def basic_dosage(t):
         """nastaveni davkovani pro isofluran (C_in), dopamin (C_inf_DP) a nitroprusid sodny (C_inf_SNP) v danem case"""
+        # davkovani dopaminu
         if (t > 5) and (t < 20):
             C_inf_DP = 0
         else:
             C_inf_DP = 0
 
+        # davkovani isofluranu
         if (t < 1000):
             C_in = 0.01/(0.215*p['V_T']) #procent/(procento kysliku * dechovy objem)
+            # druha varianta 0.005/...
             C_in = 0
         else:
             C_in = 0
 
+        # davkovani SNP
         C_inf_SNP = 0
+
         return C_in, C_inf_DP, C_inf_SNP
 
     def do_step(self, t, state):
@@ -110,7 +127,7 @@ class Simulation:
         C_index_SNP = [C1_SNP, C2_SNP, C3_SNP, C4_SNP, C5_SNP]
 
         # nacteni davkovani
-        C_in, C_inf_DP, C_inf_SNP = self.dosage(t)
+        C_in, C_inf_DP, C_inf_SNP = Simulation.dosage_method(t)
         C_out = C_in - C_insp
         C_out = (C_in * p['delta'] + C_insp_old * (p['V_T'] - p['delta'])) / p['V_T']
 
@@ -223,26 +240,58 @@ class Simulation:
         return result
 
 
+# Zpracovani argumentu
+DOSAGE_METHOD = Simulation.basic_dosage
+if len(sys.argv) > 2:
+    print("Error: Prilis mnoho parametru: {0}.".format(sys.argv))
+    print_help()
+    exit()
+elif len(sys.argv) == 2:
+    if sys.argv[1] == '-h':
+        print_help()
+        exit()
+    elif sys.argv[1] == 'sim1':
+        def dosage(t):
+            C_inf_DP = 0
+            C_inf_SNP = 0
+            C_in = 0.01 / (0.215 * p['V_T']) if t < 1000 else 0
+            return C_in, C_inf_DP, C_inf_SNP
+
+        DOSAGE_METHOD = dosage
+    elif sys.argv[1] == 'sim2':
+        def dosage(t):
+            C_inf_DP = 0
+            C_inf_SNP = 0
+            C_in = 0.005 / (0.215 * p['V_T']) if t < 1000 else 0
+            return C_in, C_inf_DP, C_inf_SNP
+
+        DOSAGE_METHOD = dosage
+    else:
+        print("Error: Chybne zadane parametry: {0}".format(sys.argv[1]))
+        print_help()
+else:
+    # spusteni modelu bez parametru
+    DOSAGE_METHOD = Simulation.basic_dosage
+
 # spusteni simulace modelu
 simulation = Simulation()
 time_span = [0, 10]  # starting and final times
-sol = simulation.run(time_span)
+sol = simulation.run(time_span, DOSAGE_METHOD)
 
-new_state=[]
+new_state = []
 for i in range(21):
-  new_state.append(sol.y.item(i,sol.t.size-1))
+    new_state.append(sol.y.item(i,sol.t.size-1))
 
-new_state[20]-=20 #skokova zmena tlaku
+new_state[20] -= 20  # skokova zmena tlaku
 #p['Q_index'][0]=2715 #skokova zmena tlaku
 
 time_span = [10, 20]  # starting and final times
-sol2 = simulation.run(time_span,state=new_state)
+sol2 = simulation.run(time_span, DOSAGE_METHOD, state=new_state)
 
 
 ######################################################
-### VYKRESLOVANI GRAFU
+# VYKRESLOVANI GRAFU
 ######################################################
-
 # MAP krivka
 vykreslit_MAP = []
 for i in range(sol.t.size):
@@ -258,7 +307,6 @@ plt.ylabel('MAP (mmHg)')
 #plt.xlim(0,1600)
 #plt.ylim(30,100)
 plt.title('Mean arterial pressure (MAP)')
-
 
 ##########################################
 # zobrazi MAP grafu pro upravenou diferencialni rovnici
