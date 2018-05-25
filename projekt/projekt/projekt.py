@@ -98,8 +98,6 @@ class Simulation:
         # davkovani isofluranu
         if (t < 1000):
             C_in = 0.01/(0.215*p['V_T']) #procent/(procento kysliku * dechovy objem)
-            # druha varianta 0.005/...
-            C_in = 0
         else:
             C_in = 0
 
@@ -233,7 +231,7 @@ class Simulation:
         else:
             MAP_quadratic = (-(2 * p['K']**2) + math.sqrt(d)) / (2 * (1 / R_sys**2))  # koren = -b +- odmocnina z D to cele deleno 2a
 
-        MAP_new = MAP - MAP * bfc*MAP_quadratic  # posledni funkcni
+        MAP_new = MAP_I - MAP * bfc*MAP_quadratic  # posledni funkcni
 
         # pripojeni vysledku pharmacodynamic modelu a MAP ovlivneneho baroreflexem
         result += [new_Eff_DP_Emax, new_Eff_DP_Rsys, new_Eff_SNP_Rsys]+[C_e]+[MAP_new]
@@ -279,8 +277,6 @@ time_span = [0, 1500]  # starting and final times
 sol = simulation.run(time_span, DOSAGE_METHOD)
 
 
-
-
 ######################################################
 # VYKRESLOVANI GRAFU
 ######################################################
@@ -294,10 +290,9 @@ plt.subplot(111)
 plt.plot(sol.t, vykreslit_MAP_new)
 plt.xlabel('Time (min)')
 plt.ylabel('MAP (mmHg)')
-#plt.xlim(0,50)
-#plt.ylim(80,90)
+plt.xlim(0,50)
+plt.ylim(80,90)
 plt.title('Mean arterial pressure (MAP) podle diferencialni rovnice')
-
 
 # efekt isofluranu na BIS
 vykreslit_BIS = []
@@ -311,8 +306,8 @@ plt.subplot(111)
 plt.plot(sol.t, vykreslit_BIS)
 plt.xlabel('Time (min)')
 plt.ylabel('BIS (mmHg)')
-#plt.xlim(0,1600)
-#plt.ylim(30,100)
+plt.xlim(0,1500)
+plt.ylim(30,100)
 plt.title('Bispectral index (BIS)')
 
 # davkovani leku
@@ -350,7 +345,7 @@ plt.subplot(111)
 plt.plot(sol.t, vykreslit_MAP)
 plt.xlabel('Time (min)')
 plt.ylabel('MAP (mmHg)')
-#plt.xlim(0,50)
+plt.xlim(0,50)
 #plt.ylim(80,90)
 plt.title('Effect of Isoflurane on MAP')
 
