@@ -1,8 +1,16 @@
+#!/usr/bin/env python3
+"""
+Projekt do predmetu SNT - Model regulace krevního tlaku při operacích
+Autori: Martin Knotek (xknote10), Filip Stastny (xstast24)
+"""
+import sys
+if sys.version_info[0:2] <= (3, 4):
+    print("Error: Verze Pythonu musi byt 3.4+, idealne 3.6.")
 from pylab import *
 from scipy.integrate import solve_ivp
-from enum import Enum
-from math import sqrt,exp
 
+
+# souhrn konstant a parametru potrebnych k behu modelu, jmena jsou shodna se jmennou konvenci pouzitou ve ydrojovem clanku
 p = {
     'A_aorta': 4.15,
     'A_lv': 12,
@@ -18,13 +26,13 @@ p = {
     'E_max0': 2.12,
     'f_R': 14.5,
     'g_index': [0, 24.456, 8.412, 4.667, 1.247],
-    'k_1': 1,  # TODO vyzkouset, neni v clanku
-    'k_2': 1,  # TODO vyzkouset, neni v clanku
+    'k_1': 1,
+    'k_2': 1,
     'k_20': 0.0093,
     'k_e0': 0.948,
     'K': 4.316,
     'MAP0': 90,
-    'N': 1,  # TODO dohledat/vyzkouset? neni v clanku
+    'N': 1,
     'R_index': [1.59, 1.4, 2.92, 44.9, 44.9],
     'R_sys0': 0.0258,
     'V': 5000,
@@ -37,9 +45,7 @@ p = {
     'ro': 1.05,
     'tau_DP': 2,
     'tau_SNP': 0.25,
-    # dohledat
     # 'C_in': 1,#.01, stala davka 1 g/ml isoflurane
-     # 'C_out': 0,
     # Q_in=p['f_R']*p['V_T']
     'Q_in': 7250,  # flow rate - vstupni objem (ml/min)
     # 5000->3500
@@ -47,25 +53,26 @@ p = {
 }
 
 
+# Pomocny enum pro urceni pozice cilenych parametru v poli
 class Pos:
     EFF_DP_EMAX = 16
     EFF_DP_RSYS = 17
     EFF_SNP_RSYS = 18
     C_E2 = 19
     C_E3 = 20
-    C_E4 = 21
-    C_E5 = 22
 
 
 class Simulation:
+    """
+    Trida zapouzdruje zapouzdruje model a umoznuje nad nim provadeni simulaci pomoci metody run().
+    Pro zmenu davkovani je treba upravit funkci dosage().
+    """
     def run(self, t_span, state=([0] * 20)+[p['MAP0']]):
         """
         :param t_span: 2-tuple, interval of integration (t0, tf). The solver starts with t=t0 and integrates until it reaches t=tf.
         :return: Bunch object with the following fields defined: t, y, etc. -- see scipy/integrate/_ivp/ivp.py fo details
         """
-        #state0 = [0] * 20  # TODO
-        #state0.append(p['MAP0']) # puvodni tlak
-        state0=state
+        state0 = state
         return solve_ivp(self.do_step, t_span, state0, max_step =0.25)  # , t_eval=np.linspace(0, 1.5, 15)) #method='LSODA', max_step =0.25
 
     def dosage(self, t):
@@ -85,20 +92,31 @@ class Simulation:
         return C_in, C_inf_DP, C_inf_SNP
 
     def do_step(self, t, state):
-        """PHARMACOKINETIC"""
+        """
+        Funkce provadi jeden krok numerickeho vypoctu diferencialnich rovnic.
+        :param t: aktualni cas
+        :param state: stav promennych z predchoziho kroku, jednorozmerne pole
+        :return: new_state - aktualni stav promennych po vyreseni tohoto kroku
+        """
+        #################
+        # PHARMACOKINETIC cast modelu
+        #################
+        # vstupni hodnoty derivovanych promennych
         C_insp, C1_I, C2_I, C3_I, C4_I, C5_I, C1_DP, C2_DP, C3_DP, C4_DP, C5_DP, C1_SNP, C2_SNP, C3_SNP, C4_SNP, C5_SNP = state[0:16]
         C_insp_old = C_insp
+        # pomocna pole derivovanych promennych pro snazsi praci s nimi
         C_index_I = [C1_I, C2_I, C3_I, C4_I, C5_I]
         C_index_DP = [C1_DP, C2_DP, C3_DP, C4_DP, C5_DP]
         C_index_SNP = [C1_SNP, C2_SNP, C3_SNP, C4_SNP, C5_SNP]
 
+        # nacteni davkovani
         C_in, C_inf_DP, C_inf_SNP = self.dosage(t)
-        C_out = C_in - C_insp  # TODO
+        C_out = C_in - C_insp
         C_out = (C_in * p['delta'] + C_insp_old * (p['V_T'] - p['delta'])) / p['V_T']
 
         # isoflurane on BIS
-        C_e_old=state[19]
-        C_e=p['k_e0']*( C_index_I[0]-C_e_old)
+        C_e_old = state[19]
+        C_e = p['k_e0']*(C_index_I[0]-C_e_old)
 
         # ISOFLURANE
         # respiratory system
@@ -158,20 +176,25 @@ class Simulation:
         C4_SNP = pom[3]
         C5_SNP = pom[4]
 
+        # ulozeni novych vysledku derivaci z pharmacokinetic casti
         result = [C_insp, C1_I, C2_I, C3_I, C4_I, C5_I, C1_DP, C2_DP, C3_DP, C4_DP, C5_DP, C1_SNP, C2_SNP, C3_SNP, C4_SNP, C5_SNP]
 
-        """PHARMACODYNAMIC"""
+        #################
+        # PHARMACODYNAMIC cast modelu
+        #################
+        # nacteni hodnot z predchoziho kroku
         Eff_DP_Emax = state[Pos.EFF_DP_EMAX]
         Eff_DP_Rsys = state[Pos.EFF_DP_RSYS]
         Eff_SNP_Rsys = state[Pos.EFF_SNP_RSYS]
-
+        # vypocet nove hodnoty vlivu DP na maximalni elasticitu cev
         new_Eff_DP_Emax = p['k_1'] * C1_DP**p['N'] * (p['Eff_max_DP_E'] - Eff_DP_Emax) - p['k_2'] * Eff_DP_Emax
+        # vypocet nove hodnoty vlivu DP na maximalni systemovou resistanci
         new_Eff_DP_Rsys = p['k_1'] * C1_DP**p['N'] * (p['Eff_max_DP_R'] - Eff_DP_Rsys) - p['k_2'] * Eff_DP_Rsys
+        # vypocet nove hodnoty vlivu SNP na maximalni elasticitu cev
         new_Eff_SNP_Rsys = p['k_1'] * C1_SNP**p['N'] * (p['Eff_max_SNP_R'] - Eff_SNP_Rsys) - p['k_2'] * Eff_SNP_Rsys
 
-        # TODO BIS co znamena a k cemu je to Ce, kdyz uz se koncentrace pocitaji v pharmacokineticu?
-
-        MAP=state[20]
+        # vypocet MAP ovlivneneho baroreflexem
+        MAP = state[20]
         # vypocet MAP z isofluranu
         pom=0
         for j in range(1, 5):
@@ -193,12 +216,14 @@ class Simulation:
         else:
             MAP_quadratic = (-(2 * p['K']**2) + math.sqrt(d)) / (2 * (1 / R_sys**2))  # koren = -b +- odmocnina z D to cele deleno 2a
 
-        MAP_new = MAP - MAP * bfc*MAP_quadratic #posledni funkcni
+        MAP_new = MAP - MAP * bfc*MAP_quadratic  # posledni funkcni
 
+        # pripojeni vysledku pharmacodynamic modelu a MAP ovlivneneho baroreflexem
         result += [new_Eff_DP_Emax, new_Eff_DP_Rsys, new_Eff_SNP_Rsys]+[C_e]+[MAP_new]
         return result
 
 
+# spusteni simulace modelu
 simulation = Simulation()
 time_span = [0, 10]  # starting and final times
 sol = simulation.run(time_span)
@@ -236,7 +261,7 @@ plt.title('Mean arterial pressure (MAP)')
 
 
 ##########################################
-# zobrazi MAP grafu pro vymyslenou diferencialni rovnici
+# zobrazi MAP grafu pro upravenou diferencialni rovnici
 #
 # V PRIPADE POTREBY ZAKOMENTOVAT/SMAZAT NÁSLEDUJÍCÍ ŘÁDKY
 plt.show()
@@ -259,7 +284,7 @@ plt.xlim(0,1600)
 plt.ylim(30,100)
 plt.title('Bispectral index (BIS)')
 
-
+# davkovani leku
 vykreslit_I = []
 vykreslit_DP = []
 vykreslit_SNP = []
@@ -290,7 +315,6 @@ for i in range(sol.t.size):
 
 plt.figure(1)
 
-# MAP z pharmacokinetic modelu
 plt.subplot(111)
 plt.plot(sol.t, vykreslit_MAP)
 plt.xlabel('Time (min)')
@@ -298,8 +322,10 @@ plt.ylabel('MAP (mmHg)')
 plt.xlim(0,50)
 plt.title('Effect of Isoflurane on MAP')
 
+# hodnoty davkovani leku
 plt.figure(2)
 
+# davkovani isofluranu
 plt.subplot(311)
 plt.plot(sol.t, vykreslit_I)
 plt.xlabel('Time (min)')
@@ -307,6 +333,7 @@ plt.ylabel('Concentration (g/mL)')
 plt.title('Concentration of isoflurane')
 plt.legend(('$C_{insp}$ (g/mL)', '$C_1$ (g/mL)', '$C_2$ (g/mL)', '$C_3$ (g/mL)', '$C_4$ (g/mL)', '$C_5$ (g/mL)'))
 
+# davkovani dopaminu
 plt.subplot(312)
 plt.plot(sol.t, vykreslit_DP)
 plt.xlabel('Time (min)')
@@ -314,6 +341,7 @@ plt.ylabel('Concentration (g/mL)')
 plt.title('Concentration of dopamine')
 plt.legend(('$C_1$ (g/mL)', '$C_2$ (g/mL)', '$C_3$ (g/mL)', '$C_4$ (g/mL)', '$C_5$ (g/mL)'))
 
+# davkovani SNP
 plt.subplot(313)
 plt.plot(sol.t, vykreslit_SNP)
 plt.xlabel('Time (min)')
@@ -321,7 +349,6 @@ plt.ylabel('Concentration (g/mL)')
 plt.title('Concentration of sodium nitroprusside')
 plt.legend(('$C_1$ (g/mL)', '$C_2$ (g/mL)', '$C_3$ (g/mL)', '$C_4$ (g/mL)', '$C_5$ (g/mL)'))
 
-"""PHARMACODYNAMIC plotting"""
 # MAP as function of Emax and Rsys
 draw_MAP_as_function_Emax_Rsys = []
 for i in range(sol.t.size):
@@ -340,28 +367,10 @@ for i in range(sol.t.size):
     draw_MAP_as_function_Emax_Rsys.append(MAP)
 
 plt.figure(3)
+
 plt.subplot(111)
 plt.plot(sol.t, draw_MAP_as_function_Emax_Rsys)
 plt.xlabel('Time (min)')
 plt.ylabel('MAP (mmHg)')
 plt.title('MAP as function of Emax and Rsys')
 plt.show()
-
-## Effect of Isoflurane on MAP
-##  TODO aha, to je to stejne jako prvni MAP vykreslovani... bude asi potreba zjistit, co je teda tento MAP a co ten MAP v kvadraticke rovnici
-#draw_isoflurane_effect_on_MAP = []
-#for i in range(sol.t.size):
-#    suma = 0
-#    for j in range(1, 5):  # for compartments 2-5
-#        suma += p['g_index'][j] * (1 + p['b_index'][j] * sol.y.item(j+1, i))  # j+1 protoze C2_I je ve vysledku az na 3. pozici
-#    MAP = p['Q_index'][0] / suma
-
-#    draw_isoflurane_effect_on_MAP.append(MAP)
-
-#plt.figure(4)
-#plt.subplot(111)
-#plt.plot(sol.t, draw_isoflurane_effect_on_MAP)
-#plt.xlabel('Time (min)')
-#plt.ylabel('MAP (mmHg)')
-#plt.title('Effect of Isoflurane on MAP')
-#plt.show()
