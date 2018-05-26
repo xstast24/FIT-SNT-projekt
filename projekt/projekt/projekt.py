@@ -292,7 +292,7 @@ plt.xlabel('Time (min)')
 plt.ylabel('MAP (mmHg)')
 plt.xlim(0,50)
 plt.ylim(80,90)
-plt.title('Mean arterial pressure (MAP) podle diferencialni rovnice')
+plt.title('Mean arterial pressure (MAP) affected by baroreflex')
 
 # efekt isofluranu na BIS
 vykreslit_BIS = []

@@ -1,0 +1,7 @@
+Pro spuštění programu je nutné mít nainstalovaný:
+Python 3.4+ (testováno na verzi 3.6)
+knihovnu SciPy (https://www.scipy.org)
+
+Program lze spustit s parametry:
+sim1 - pro vykreslení výsledných grafů při vlivu 1% isofluranu
+sim2 - pro vykreslení výsledných grafů při vlivu 0.5% isofluranu
